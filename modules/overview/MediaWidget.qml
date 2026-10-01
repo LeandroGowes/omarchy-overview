@@ -210,7 +210,8 @@ Item {
         anchors.fill: parent
         radius: Style.cornerRadius
         color: Color.launcher.background
-        border.width: Math.max(1, Style.space(1))
+        // A two-pixel outline keeps the full card edge visible over busy backdrops.
+        border.width: Math.max(2, Style.space(2))
         border.color: Color.launcher.border
         clip: true
 

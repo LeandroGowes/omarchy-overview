@@ -380,7 +380,12 @@ Scope {
                 RowLayout {
                     id: topHeader
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: (overviewLoader.item && overviewLoader.item.implicitWidth > 0) ? overviewLoader.item.implicitWidth : 1310
+                    // Keep the header within the monitor so the media card does not
+                    // drift past the right edge when the workspace overview is wider.
+                    Layout.preferredWidth: Math.min(
+                        (overviewLoader.item && overviewLoader.item.implicitWidth > 0) ? overviewLoader.item.implicitWidth : 1310,
+                        Math.max(0, root.screen.width - Style.space(48))
+                    )
                     Layout.preferredHeight: 38
                     spacing: 14
 
@@ -545,6 +550,7 @@ Scope {
                         id: mediaWidget
                         shell: overviewScope.shell
                         Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                        Layout.rightMargin: Style.space(14)
                         visible: (Config.options.overview.showMediaWidget ?? true) && hasMedia && (topHeader.width >= 680)
                     }
                 }
