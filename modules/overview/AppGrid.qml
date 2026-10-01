@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import "../../common"
@@ -17,7 +18,19 @@ Item {
 
     readonly property var runningWindows: HyprlandData.windowList || []
 
-    readonly property var favoriteApps: {
+    FileView {
+        id: userConfigFile
+        path: (Quickshell.env("HOME") || "/home/leandro") + "/.config/omarchy/shell.json"
+        watchChanges: true
+        atomicWrites: true
+        printErrors: false
+        onLoaded: {
+            root.syncFromConfigFile();
+        }
+        onFileChanged: reload()
+    }
+
+    property var favoriteApps: {
         const fromConfig = Config.options.overview.favoriteApps;
         if (Array.isArray(fromConfig)) return fromConfig;
         return [
@@ -27,6 +40,33 @@ Item {
         ];
     }
 
+    function syncFromConfigFile() {
+        try {
+            const raw = userConfigFile.text();
+            if (!raw || raw.trim().length === 0) return;
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed?.plugins)) return;
+            for (let p of parsed.plugins) {
+                if (p && p.id === "omarchy-overview" && Array.isArray(p.favoriteApps)) {
+                    root.favoriteApps = p.favoriteApps;
+                    Config.options.overview.favoriteApps = p.favoriteApps;
+                    break;
+                }
+            }
+        } catch (e) {
+            console.warn("[AppGrid] failed to parse shell.json", e);
+        }
+    }
+
+    Connections {
+        target: Config.options.overview
+        function onFavoriteAppsChanged() {
+            if (Array.isArray(Config.options.overview.favoriteApps)) {
+                root.favoriteApps = Config.options.overview.favoriteApps;
+            }
+        }
+    }
+
     function isFavoriteApp(app) {
         if (!app) return false;
         const targetId = normalizeId(app.id);
@@ -34,8 +74,60 @@ Item {
     }
 
     function toggleFavorite(appId) {
-        if (overviewScope && typeof overviewScope.toggleFavorite === "function") {
-            overviewScope.toggleFavorite(appId);
+        if (!appId) return;
+        const cleanId = String(appId).replace(/\.desktop$/, "").trim();
+        const normTarget = cleanId.toLowerCase();
+        let parsed = null;
+        try {
+            const raw = userConfigFile.text();
+            if (raw && raw.trim().length > 0) {
+                parsed = JSON.parse(raw);
+            }
+        } catch (e) {
+            console.warn("[AppGrid] failed to parse shell.json", e);
+        }
+        if (!parsed || typeof parsed !== "object") return;
+        if (!Array.isArray(parsed.plugins)) parsed.plugins = [];
+
+        let targetPlugin = null;
+        for (let p of parsed.plugins) {
+            if (p && p.id === "omarchy-overview") {
+                targetPlugin = p;
+                break;
+            }
+        }
+        if (!targetPlugin) {
+            targetPlugin = { id: "omarchy-overview" };
+            parsed.plugins.push(targetPlugin);
+        }
+
+        let currentFavorites = Array.isArray(targetPlugin.favoriteApps) ? [...targetPlugin.favoriteApps] : [
+            "com.microsoft.vscode", "google-chrome", "microsoft-edge",
+            "com.mitchellh.ghostty", "foot", "org.gnome.nautilus",
+            "chatgpt", "steam", "localsend", "mpv"
+        ];
+
+        const idx = currentFavorites.findIndex(f => String(f).toLowerCase().replace(/\.desktop$/, "").trim() === normTarget);
+        if (idx >= 0) {
+            currentFavorites.splice(idx, 1);
+            console.log("[AppGrid] Desafixado dos favoritos:", cleanId);
+        } else {
+            currentFavorites.push(cleanId);
+            console.log("[AppGrid] Adicionado aos favoritos:", cleanId);
+        }
+
+        targetPlugin.favoriteApps = currentFavorites;
+
+        // Persist to ~/.config/omarchy/shell.json
+        userConfigFile.setText(JSON.stringify(parsed, null, 2) + "\n");
+
+        // Immediately update in-memory state
+        root.favoriteApps = currentFavorites;
+        Config.settings = Object.assign({}, targetPlugin);
+        Config.options.overview.favoriteApps = currentFavorites;
+
+        if (overviewScope && typeof overviewScope.syncSettings === "function") {
+            overviewScope.syncSettings();
         }
     }
 
@@ -254,18 +346,39 @@ Item {
                         }
                         scale: hovered ? 1.08 : 1.0
 
-                        // Star badge indicating favorite / pinned app
-                        Text {
-                            visible: appTile.isFavorite
+                        // Interactive Star button (click or Ctrl+click tile to toggle)
+                        Rectangle {
+                            id: starBadge
                             anchors.top: parent.top
                             anchors.right: parent.right
-                            anchors.topMargin: 4
-                            anchors.rightMargin: 6
-                            text: "★"
-                            font.pixelSize: 11
-                            color: Color.accent
-                            opacity: appTile.hovered ? 1.0 : 0.75
-                            z: 2
+                            anchors.topMargin: 2
+                            anchors.rightMargin: 2
+                            width: 22
+                            height: 22
+                            radius: 11
+                            color: starMouseArea.containsMouse ? Color.launcher.selectedBackground : "transparent"
+                            visible: appTile.isFavorite || appTile.hovered
+                            z: 10
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: appTile.isFavorite ? "★" : "☆"
+                                font.pixelSize: 13
+                                color: appTile.isFavorite ? Color.accent : Color.launcher.text
+                                opacity: appTile.isFavorite ? (appTile.hovered ? 1.0 : 0.85) : (starMouseArea.containsMouse ? 0.9 : 0.45)
+                            }
+
+                            MouseArea {
+                                id: starMouseArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                acceptedButtons: Qt.LeftButton
+                                onClicked: (mouse) => {
+                                    root.toggleFavorite(appTile.app.id);
+                                    mouse.accepted = true;
+                                }
+                            }
                         }
 
                         Column {
@@ -325,7 +438,9 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                             onClicked: (mouse) => {
-                                if (mouse.modifiers & Qt.ControlModifier) {
+                                const isCtrl = (mouse.modifiers & Qt.ControlModifier) !== 0;
+                                console.log("[AppGrid] Clicked:", appTile.app.id, "button:", mouse.button, "modifiers:", mouse.modifiers, "isCtrl:", isCtrl);
+                                if (isCtrl) {
                                     root.toggleFavorite(appTile.app.id);
                                     mouse.accepted = true;
                                     return;
@@ -339,8 +454,8 @@ Item {
                                 alternativeVisibleCondition: appMouseArea.containsMouse
                                 text: {
                                     const favHint = appTile.isFavorite
-                                        ? "★ Favorito fixado (Ctrl + Clique para desafixar)"
-                                        : "Ctrl + Clique para fixar nos favoritos";
+                                        ? "★ Favorito fixado (Ctrl + Clique ou clique na estrela para desafixar)"
+                                        : "Ctrl + Clique ou clique na estrela para fixar nos favoritos";
                                     const runHint = appTile.running
                                         ? "Em execução (clique para alternar)"
                                         : "Clique para abrir";
