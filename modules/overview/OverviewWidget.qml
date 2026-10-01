@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import Quickshell.Wayland
 import Quickshell.Hyprland
 import "../../common"
@@ -14,6 +15,10 @@ Item {
     id: root
     required property var panelWindow
     property var shell: panelWindow?.shell ?? null
+
+    Process {
+        id: screenshotProcess
+    }
     readonly property var appLibrary: shell?.appLibrary ?? null
     readonly property HyprlandMonitor monitor: Hyprland.monitorFor(panelWindow.screen)
     readonly property var toplevels: ToplevelManager.toplevels
@@ -203,12 +208,13 @@ Item {
         const wsId = winData.workspace?.id ?? 1;
         const at = winData.at || [0, 0];
         const size = winData.size || [800, 600];
-        const title = String(winData.title || winData.class || "Janela").replace(/["'\\]/g, "");
+        const title = String(winData.title || winData.class || "Janela");
 
         const x = Math.max(0, Math.round(at[0]));
         const y = Math.max(0, Math.round(at[1]));
         const w = Math.max(1, Math.round(size[0]));
         const h = Math.max(1, Math.round(size[1]));
+        const geo = `${x},${y} ${w}x${h}`;
 
         GlobalStates.overviewOpen = false;
 
@@ -220,13 +226,10 @@ Item {
             Hyprland.dispatch(`workspace ${wsId}`);
         }
 
-        const script = `sleep 0.16; DIR="\${XDG_PICTURES_DIR:-$HOME/Pictures}/Screenshots"; mkdir -p "$DIR"; FILE="$DIR/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"; grim -g "${x},${y} ${w}x${h}" "$FILE" && wl-copy --type image/png < "$FILE" && omarchy-notification-send --image "$FILE" "Captura de Janela" "${title} salva e copiada!" --exec xdg-open "$FILE"`;
-
-        if (Hyprland.usingLua) {
-            Hyprland.dispatch(`hl.dsp.exec_cmd("sh -c '${script}'")`);
-        } else {
-            Hyprland.dispatch(`exec sh -c '${script}'`);
-        }
+        const scriptPath = Qt.resolvedUrl("../../scripts/capture-window.sh").toString().replace(/^file:\/\//, "") || ((Quickshell.env("HOME") || "/home/leandro") + "/.config/omarchy/plugins/omarchy-overview/scripts/capture-window.sh");
+        screenshotProcess.running = false;
+        screenshotProcess.command = [scriptPath, geo, title];
+        screenshotProcess.running = true;
     }
 
     function stepWorkspace(delta) {
