@@ -539,14 +539,14 @@ Item {
             }
 
             Item {
-                visible: root.showSpecialWorkspaces
+                visible: root.showSpecialWorkspaces && (root.hasSpecialWorkspaceSection || root.draggingFromWorkspace !== -1)
                 implicitWidth: 1
                 implicitHeight: root.specialStripGap
             }
 
             Item {
                 id: specialWorkspaceSection
-                visible: root.showSpecialWorkspaces
+                visible: root.showSpecialWorkspaces && (root.hasSpecialWorkspaceSection || root.draggingFromWorkspace !== -1)
                 implicitWidth: root.specialSectionWidth
                 implicitHeight: root.specialStripHeight
 
@@ -883,6 +883,51 @@ Item {
                                                     alternativeVisibleCondition: specialDragArea.containsMouse && !specialWindow.Drag.active
                                                     text: `${windowData?.title ?? "Unknown"}\n[${windowData?.class ?? "unknown"}] ${windowData?.xwayland ? "[XWayland] " : ""}`
                                                 }
+
+                                                Rectangle {
+                                                    id: specialCloseBtn
+                                                    z: 9999
+                                                    width: 22
+                                                    height: 22
+                                                    radius: 11
+                                                    anchors.top: parent.top
+                                                    anchors.right: parent.right
+                                                    anchors.margins: 4
+                                                    visible: (specialWindow.hovered || specialCloseBtnArea.containsMouse) && !specialWindow.pressed
+                                                    color: specialCloseBtnArea.containsMouse ? "#ef4444" : ColorUtils.applyAlpha(Color.launcher.background, 0.88)
+                                                    border.width: 1
+                                                    border.color: specialCloseBtnArea.containsMouse ? "#dc2626" : Color.launcher.border
+
+                                                    Behavior on scale {
+                                                        NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
+                                                    }
+                                                    scale: specialCloseBtnArea.containsMouse ? 1.15 : 1.0
+
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "✕"
+                                                        font.pixelSize: 10
+                                                        font.bold: true
+                                                        color: specialCloseBtnArea.containsMouse ? "#ffffff" : Color.launcher.text
+                                                    }
+
+                                                    MouseArea {
+                                                        id: specialCloseBtnArea
+                                                        anchors.fill: parent
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        acceptedButtons: Qt.LeftButton
+                                                        onClicked: (mouse) => {
+                                                            mouse.accepted = true;
+                                                            if (!windowData?.address) return;
+                                                            if (Hyprland.usingLua) {
+                                                                Hyprland.dispatch(`hl.dsp.window.close('address:${windowData.address}')`);
+                                                            } else {
+                                                                Hyprland.dispatch(`closewindow address:${windowData.address}`);
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -1193,6 +1238,51 @@ Item {
                             extraVisibleCondition: false
                             alternativeVisibleCondition: dragArea.containsMouse && !window.Drag.active
                             text: `${windowData?.title ?? "Unknown"}\n[${windowData?.class ?? "unknown"}] ${windowData?.xwayland ? "[XWayland] " : ""}`
+                        }
+
+                        Rectangle {
+                            id: closeBtn
+                            z: 9999
+                            width: 22
+                            height: 22
+                            radius: 11
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.margins: 4
+                            visible: (window.hovered || closeBtnArea.containsMouse) && !window.pressed
+                            color: closeBtnArea.containsMouse ? "#ef4444" : ColorUtils.applyAlpha(Color.launcher.background, 0.88)
+                            border.width: 1
+                            border.color: closeBtnArea.containsMouse ? "#dc2626" : Color.launcher.border
+
+                            Behavior on scale {
+                                NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
+                            }
+                            scale: closeBtnArea.containsMouse ? 1.15 : 1.0
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✕"
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: closeBtnArea.containsMouse ? "#ffffff" : Color.launcher.text
+                            }
+
+                            MouseArea {
+                                id: closeBtnArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                acceptedButtons: Qt.LeftButton
+                                onClicked: (mouse) => {
+                                    mouse.accepted = true;
+                                    if (!windowData?.address) return;
+                                    if (Hyprland.usingLua) {
+                                        Hyprland.dispatch(`hl.dsp.window.close('address:${windowData.address}')`);
+                                    } else {
+                                        Hyprland.dispatch(`closewindow address:${windowData.address}`);
+                                    }
+                                }
+                            }
                         }
                     }
                 }

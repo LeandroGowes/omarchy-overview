@@ -51,7 +51,9 @@ Item {
         return findRunningWindow(app) !== null;
     }
 
-    readonly property var appEntries: {
+    property string searchQuery: ""
+
+    readonly property var allApps: {
         const raw = DesktopEntries.applications.values || [];
         const filtered = [];
         const seen = new Set();
@@ -75,13 +77,13 @@ Item {
             filtered.push(app);
         }
 
-        // Pinned / favorite apps at the front
-        const pinned = [
-            "google-chrome", "com.microsoft.vscode", "microsoft-edge",
-            "org.gnome.nautilus", "com.mitchellh.ghostty", "foot",
-            "steam", "localsend", "chatgpt", "mpv", "flux",
-            "io.github.tcballard.taskmanager", "net.lutris.lutris"
-        ];
+        // Pinned / favorite apps from config
+        const configuredPinned = (Config.options.overview.favoriteApps || [
+            "com.microsoft.vscode", "google-chrome", "microsoft-edge",
+            "com.mitchellh.ghostty", "foot", "org.gnome.nautilus",
+            "chatgpt", "steam", "localsend", "mpv"
+        ]);
+        const pinned = configuredPinned.map(normalizeId);
 
         filtered.sort((a, b) => {
             const idA = normalizeId(a.id);
@@ -95,6 +97,25 @@ Item {
         });
 
         return filtered;
+    }
+
+    readonly property var appEntries: {
+        const q = String(searchQuery || "").trim().toLowerCase();
+        if (!q) return allApps;
+        return allApps.filter(app => {
+            const name = String(app.name || "").toLowerCase();
+            const id = String(app.id || "").toLowerCase();
+            const comment = String(app.comment || "").toLowerCase();
+            return name.includes(q) || id.includes(q) || comment.includes(q);
+        });
+    }
+
+    function launchFirstApp(newInstance = false) {
+        if (appEntries.length > 0) {
+            launchApp(appEntries[0], newInstance);
+            return true;
+        }
+        return false;
     }
 
     function resolveIcon(icon) {
@@ -171,8 +192,19 @@ Item {
                 }
             }
 
+            StyledText {
+                visible: root.appEntries.length === 0
+                anchors.centerIn: parent
+                text: `Nenhum aplicativo encontrado para "${root.searchQuery}"`
+                font.family: Style.font.family
+                font.pixelSize: 13
+                color: Color.launcher.text
+                opacity: 0.6
+            }
+
             Row {
                 id: appRow
+                visible: root.appEntries.length > 0
                 spacing: Style.space(6)
                 anchors.verticalCenter: parent.verticalCenter
                 leftPadding: Style.space(8)
@@ -184,14 +216,18 @@ Item {
                     delegate: Rectangle {
                         id: appTile
                         required property var modelData
+                        required property int index
                         readonly property var app: modelData
                         readonly property bool running: root.isAppRunning(app)
-                        property bool hovered: appMouseArea.containsMouse
+                        readonly property bool isSelected: (root.searchQuery.trim().length > 0 && index === 0)
+                        property bool hovered: appMouseArea.containsMouse || isSelected
 
                         width: 76
                         height: 80
                         radius: 12
                         color: hovered ? Color.launcher.selectedBackground : "transparent"
+                        border.width: isSelected ? Math.max(1, Style.space(1.5)) : 0
+                        border.color: isSelected ? Color.launcher.selectedText : "transparent"
 
                         Behavior on scale {
                             NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
