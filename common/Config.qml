@@ -165,7 +165,7 @@ Singleton {
             property string previewMode: "live"
             property bool includeInactiveMonitorPreviews: root.readBool("overview.includeInactiveMonitorPreviews", true)
             property int previewRecaptureDelayMs: root.readInt("overview.previewRecaptureDelayMs", 60)
-            property bool showSpecialWorkspaces: root.asBool(root.setting("showSpecialWorkspaces", true), true)
+            property bool showSpecialWorkspaces: root.asBool(root.setting("showSpecialWorkspaces", false), false)
             property var favoriteApps: root.readList("overview.favoriteApps", [
                 "com.microsoft.vscode", "google-chrome", "microsoft-edge",
                 "com.mitchellh.ghostty", "foot", "org.gnome.nautilus",

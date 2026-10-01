@@ -340,10 +340,12 @@ Scope {
                         spacing: 8
 
                         Text {
-                            text: "🔍"
+                            text: "\uf002"
+                            font.family: "JetBrainsMono Nerd Font"
                             font.pixelSize: 13
                             color: Color.launcher.text
-                            opacity: 0.6
+                            opacity: 0.65
+                            Layout.alignment: Qt.AlignVCenter
                         }
 
                         TextInput {
