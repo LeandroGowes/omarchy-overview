@@ -540,10 +540,47 @@ Scope {
                     panelWindow: root
                     shell: root.shell
                     overviewScope: overviewScope
+                    dragGhost: appDragGhost
                     searchQuery: searchInput.text
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: (overviewLoader.item && overviewLoader.item.implicitWidth > 0) ? overviewLoader.item.implicitWidth : implicitWidth
                     Layout.preferredHeight: implicitHeight
+                }
+            }
+
+            Item {
+                id: appDragGhost
+                visible: Drag.active
+                width: 68
+                height: 68
+                z: 999999
+                property var draggedApp: null
+                property var sourceGrid: null
+
+                Drag.active: false
+                Drag.source: appDragGhost
+                Drag.hotSpot.x: width / 2
+                Drag.hotSpot.y: height / 2
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 16
+                    color: Color.launcher.background
+                    border.width: 2
+                    border.color: Color.launcher.selectedText
+                    opacity: 0.95
+
+                    StyledRectangularShadow {
+                        target: parent
+                    }
+
+                    Image {
+                        anchors.centerIn: parent
+                        width: 44
+                        height: 44
+                        fillMode: Image.PreserveAspectFit
+                        source: appDragGhost.draggedApp ? appGrid.resolveIcon(appDragGhost.draggedApp.icon) : ""
+                    }
                 }
             }
         }

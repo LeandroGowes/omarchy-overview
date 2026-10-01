@@ -8,4 +8,6 @@ Singleton {
     id: root
     property bool overviewOpen: false
     property bool superReleaseMightTrigger: true
+    property int hoveredWorkspaceId: -1
+    property var draggedApp: null
 }

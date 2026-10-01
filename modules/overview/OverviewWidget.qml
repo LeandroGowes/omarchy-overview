@@ -523,12 +523,26 @@ Item {
                                 onEntered: {
                                     root.draggingTargetWorkspace = workspaceValue
                                     root.draggingTargetSpecialWorkspace = ""
+                                    GlobalStates.hoveredWorkspaceId = workspaceValue
                                     if (root.draggingFromWorkspace == root.draggingTargetWorkspace) return;
                                     hoveredWhileDragging = true
                                 }
                                 onExited: {
                                     hoveredWhileDragging = false
                                     if (root.draggingTargetWorkspace == workspaceValue) root.draggingTargetWorkspace = -1
+                                    if (GlobalStates.hoveredWorkspaceId == workspaceValue) GlobalStates.hoveredWorkspaceId = -1
+                                }
+                                onDropped: (drop) => {
+                                    hoveredWhileDragging = false
+                                    root.draggingTargetWorkspace = -1
+                                    GlobalStates.hoveredWorkspaceId = -1
+                                    const app = (drop.source && drop.source.draggedApp) ? drop.source.draggedApp : GlobalStates.draggedApp
+                                    if (app) {
+                                        if (drop.source && drop.source.sourceGrid && typeof drop.source.sourceGrid.launchAppOnWorkspace === "function") {
+                                            drop.source.sourceGrid.launchAppOnWorkspace(app, workspaceValue);
+                                        }
+                                        drop.accept();
+                                    }
                                 }
                             }
 

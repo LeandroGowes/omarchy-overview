@@ -15,6 +15,7 @@ Item {
     required property var panelWindow
     property var shell: null
     property var overviewScope: null
+    property var dragGhost: null
 
     readonly property var runningWindows: HyprlandData.windowList || []
 
@@ -128,6 +129,70 @@ Item {
 
         if (overviewScope && typeof overviewScope.syncSettings === "function") {
             overviewScope.syncSettings();
+        }
+    }
+
+    function startAppDrag(app, tileItem, mouse) {
+        if (!dragGhost) return;
+        GlobalStates.draggedApp = app;
+        dragGhost.draggedApp = app;
+        dragGhost.sourceGrid = root;
+        const mapped = tileItem.mapToItem(dragGhost.parent, mouse.x, mouse.y);
+        dragGhost.x = mapped.x - dragGhost.width / 2;
+        dragGhost.y = mapped.y - dragGhost.height / 2;
+        dragGhost.Drag.active = true;
+    }
+
+    function updateAppDrag(tileItem, mouse) {
+        if (!dragGhost || !dragGhost.Drag.active) return;
+        const mapped = tileItem.mapToItem(dragGhost.parent, mouse.x, mouse.y);
+        dragGhost.x = mapped.x - dragGhost.width / 2;
+        dragGhost.y = mapped.y - dragGhost.height / 2;
+    }
+
+    function finishAppDrag(app) {
+        if (!dragGhost) return;
+        dragGhost.Drag.drop();
+        dragGhost.Drag.active = false;
+
+        const targetWs = GlobalStates.hoveredWorkspaceId;
+        GlobalStates.hoveredWorkspaceId = -1;
+        GlobalStates.draggedApp = null;
+
+        if (targetWs > 0 && app) {
+            root.launchAppOnWorkspace(app, targetWs);
+        }
+
+        dragGhost.draggedApp = null;
+        dragGhost.sourceGrid = null;
+    }
+
+    function launchAppOnWorkspace(app, targetWorkspace, newInstance = false) {
+        if (!app || !targetWorkspace || targetWorkspace < 1) return;
+        GlobalStates.overviewOpen = false;
+        const desktopId = String(app.id || "");
+        const runningWin = root.findRunningWindow(app);
+
+        if (!newInstance && runningWin && runningWin.address) {
+            if (Hyprland.usingLua) {
+                Hyprland.dispatch(`hl.dsp.window.move({workspace = '${targetWorkspace}', follow = true, window = 'address:${runningWin.address}'})`);
+                Hyprland.dispatch(`hl.dsp.focus({ window = 'address:${runningWin.address}' })`);
+                Hyprland.dispatch(`hl.dsp.focus({workspace = '${targetWorkspace}'})`);
+            } else {
+                Hyprland.dispatch(`movetoworkspace ${targetWorkspace}, address:${runningWin.address}`);
+                Hyprland.dispatch(`focuswindow address:${runningWin.address}`);
+                Hyprland.dispatch(`workspace ${targetWorkspace}`);
+            }
+            return;
+        }
+
+        const launchCmd = `uwsm-app -- gtk-launch ${desktopId}`;
+        if (Hyprland.usingLua) {
+            Hyprland.dispatch(`hl.dsp.exec_cmd("[workspace ${targetWorkspace}] ${launchCmd}")`);
+            Hyprland.dispatch(`hl.dsp.focus({workspace = '${targetWorkspace}'})`);
+        } else {
+            Hyprland.dispatch(`exec [workspace ${targetWorkspace}] ${launchCmd}`);
+            Hyprland.dispatch(`workspace ${targetWorkspace}`);
         }
     }
 
@@ -333,6 +398,9 @@ Item {
                         readonly property bool isFavorite: root.isFavoriteApp(app)
                         readonly property bool isSelected: (root.searchQuery.trim().length > 0 && index === 0)
                         property bool hovered: appMouseArea.containsMouse || isSelected
+                        property point dragStartPos: Qt.point(0, 0)
+                        property bool isDragging: false
+                        property bool wasDragging: false
 
                         width: 76
                         height: 80
@@ -435,9 +503,46 @@ Item {
                             id: appMouseArea
                             anchors.fill: parent
                             hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
+                            cursorShape: appTile.isDragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
                             acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                            preventStealing: appTile.isDragging
+
+                            onPressed: (mouse) => {
+                                if (mouse.button === Qt.LeftButton) {
+                                    appTile.dragStartPos = Qt.point(mouse.x, mouse.y);
+                                    appTile.isDragging = false;
+                                    appTile.wasDragging = false;
+                                }
+                            }
+
+                            onPositionChanged: (mouse) => {
+                                if (mouse.buttons & Qt.LeftButton) {
+                                    if (!appTile.isDragging) {
+                                        const dx = mouse.x - appTile.dragStartPos.x;
+                                        const dy = mouse.y - appTile.dragStartPos.y;
+                                        if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+                                            appTile.isDragging = true;
+                                            appTile.wasDragging = true;
+                                            root.startAppDrag(appTile.app, appTile, mouse);
+                                        }
+                                    } else {
+                                        root.updateAppDrag(appTile, mouse);
+                                    }
+                                }
+                            }
+
+                            onReleased: (mouse) => {
+                                if (appTile.isDragging) {
+                                    appTile.isDragging = false;
+                                    root.finishAppDrag(appTile.app);
+                                }
+                            }
+
                             onClicked: (mouse) => {
+                                if (appTile.wasDragging) {
+                                    appTile.wasDragging = false;
+                                    return;
+                                }
                                 const isCtrl = (mouse.modifiers & Qt.ControlModifier) !== 0;
                                 console.log("[AppGrid] Clicked:", appTile.app.id, "button:", mouse.button, "modifiers:", mouse.modifiers, "isCtrl:", isCtrl);
                                 if (isCtrl) {
@@ -459,8 +564,9 @@ Item {
                                     const runHint = appTile.running
                                         ? "Em execução (clique para alternar)"
                                         : "Clique para abrir";
+                                    const dragHint = "Arraste para um espaço para abrir nele";
                                     const desc = app.comment ? `${app.comment}\n` : "";
-                                    return `${app.name || "App"}\n${desc}${runHint}\n${favHint}`;
+                                    return `${app.name || "App"}\n${desc}${runHint}\n${dragHint}\n${favHint}`;
                                 }
                             }
                         }
