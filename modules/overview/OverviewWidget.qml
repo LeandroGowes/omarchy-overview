@@ -197,6 +197,38 @@ Item {
         return (workspaceGroup * workspacesShown) + (mappedRow * Config.options.overview.columns) + mappedCol + 1 + workspaceOffset;
     }
 
+    function captureWindowScreenshot(winData) {
+        if (!winData) return;
+        const addr = String(winData.address || "");
+        const wsId = winData.workspace?.id ?? 1;
+        const at = winData.at || [0, 0];
+        const size = winData.size || [800, 600];
+        const title = String(winData.title || winData.class || "Janela").replace(/["'\\]/g, "");
+
+        const x = Math.max(0, Math.round(at[0]));
+        const y = Math.max(0, Math.round(at[1]));
+        const w = Math.max(1, Math.round(size[0]));
+        const h = Math.max(1, Math.round(size[1]));
+
+        GlobalStates.overviewOpen = false;
+
+        if (Hyprland.usingLua) {
+            Hyprland.dispatch(`hl.dsp.focus({ window = 'address:${addr}' })`);
+            Hyprland.dispatch(`hl.dsp.focus({ workspace = '${wsId}' })`);
+        } else {
+            Hyprland.dispatch(`focuswindow address:${addr}`);
+            Hyprland.dispatch(`workspace ${wsId}`);
+        }
+
+        const script = `sleep 0.16; DIR="\${XDG_PICTURES_DIR:-$HOME/Pictures}/Screenshots"; mkdir -p "$DIR"; FILE="$DIR/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"; grim -g "${x},${y} ${w}x${h}" "$FILE" && wl-copy --type image/png < "$FILE" && omarchy-notification-send --image "$FILE" "Captura de Janela" "${title} salva e copiada!" --exec xdg-open "$FILE"`;
+
+        if (Hyprland.usingLua) {
+            Hyprland.dispatch(`hl.dsp.exec_cmd("sh -c '${script}'")`);
+        } else {
+            Hyprland.dispatch(`exec sh -c '${script}'`);
+        }
+    }
+
     function stepWorkspace(delta) {
         if (!Number.isFinite(delta) || delta === 0)
             return;
@@ -1198,51 +1230,108 @@ Item {
                         }
                     }
 
-                    Rectangle {
-                        id: closeBtn
+                    Row {
+                        id: windowActionBtns
                         z: 9999
-                        width: 22
-                        height: 22
-                        radius: 11
                         anchors.top: parent.top
                         anchors.right: parent.right
                         anchors.margins: 4
-                        visible: (window.hovered || closeBtnArea.containsMouse) && !window.pressed
-                        color: closeBtnArea.containsMouse ? "#ef4444" : ColorUtils.applyAlpha(Color.launcher.background, 0.88)
-                        border.width: 1
-                        border.color: closeBtnArea.containsMouse ? "#dc2626" : Color.launcher.border
+                        spacing: 4
+                        visible: (window.hovered || closeBtnArea.containsMouse || screenshotBtnArea.containsMouse) && !window.pressed
 
-                        Behavior on scale {
-                            NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
-                        }
-                        scale: closeBtnArea.containsMouse ? 1.15 : 1.0
+                        // Screenshot button
+                        Rectangle {
+                            id: screenshotBtn
+                            width: 22
+                            height: 22
+                            radius: 11
+                            color: screenshotBtnArea.containsMouse ? Color.launcher.selectedBackground : ColorUtils.applyAlpha(Color.launcher.background, 0.88)
+                            border.width: 1
+                            border.color: screenshotBtnArea.containsMouse ? Color.launcher.selectedText : Color.launcher.border
 
-                        Text {
-                            anchors.centerIn: parent
-                            text: "✕"
-                            font.pixelSize: 10
-                            font.bold: true
-                            color: closeBtnArea.containsMouse ? "#ffffff" : Color.launcher.text
-                        }
-
-                        MouseArea {
-                            id: closeBtnArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            acceptedButtons: Qt.LeftButton
-                            onPressed: (mouse) => {
-                                mouse.accepted = true;
+                            Behavior on scale {
+                                NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
                             }
-                            onClicked: (mouse) => {
-                                mouse.accepted = true;
-                                const addr = String(window.address || windowData?.address || "");
-                                if (!addr) return;
-                                if (Hyprland.usingLua) {
-                                    Hyprland.dispatch(`hl.dsp.window.close({ window = 'address:${addr}' })`);
-                                } else {
-                                    Hyprland.dispatch(`closewindow address:${addr}`);
+                            scale: screenshotBtnArea.containsMouse ? 1.15 : 1.0
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: ""
+                                font.family: Style.font.family
+                                font.pixelSize: 10
+                                color: screenshotBtnArea.containsMouse ? Color.launcher.selectedText : Color.launcher.text
+                            }
+
+                            MouseArea {
+                                id: screenshotBtnArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                acceptedButtons: Qt.LeftButton
+                                onPressed: (mouse) => {
+                                    mouse.accepted = true;
                                 }
+                                onClicked: (mouse) => {
+                                    mouse.accepted = true;
+                                    root.captureWindowScreenshot(windowData);
+                                }
+                            }
+
+                            StyledToolTip {
+                                extraVisibleCondition: false
+                                alternativeVisibleCondition: screenshotBtnArea.containsMouse
+                                text: "Capturar tela desta janela"
+                            }
+                        }
+
+                        // Close button
+                        Rectangle {
+                            id: closeBtn
+                            width: 22
+                            height: 22
+                            radius: 11
+                            color: closeBtnArea.containsMouse ? "#ef4444" : ColorUtils.applyAlpha(Color.launcher.background, 0.88)
+                            border.width: 1
+                            border.color: closeBtnArea.containsMouse ? "#dc2626" : Color.launcher.border
+
+                            Behavior on scale {
+                                NumberAnimation { duration: 120; easing.type: Easing.OutQuad }
+                            }
+                            scale: closeBtnArea.containsMouse ? 1.15 : 1.0
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "✕"
+                                font.pixelSize: 10
+                                font.bold: true
+                                color: closeBtnArea.containsMouse ? "#ffffff" : Color.launcher.text
+                            }
+
+                            MouseArea {
+                                id: closeBtnArea
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                acceptedButtons: Qt.LeftButton
+                                onPressed: (mouse) => {
+                                    mouse.accepted = true;
+                                }
+                                onClicked: (mouse) => {
+                                    mouse.accepted = true;
+                                    const addr = String(window.address || windowData?.address || "");
+                                    if (!addr) return;
+                                    if (Hyprland.usingLua) {
+                                        Hyprland.dispatch(`hl.dsp.window.close({ window = 'address:${addr}' })`);
+                                    } else {
+                                        Hyprland.dispatch(`closewindow address:${addr}`);
+                                    }
+                                }
+                            }
+
+                            StyledToolTip {
+                                extraVisibleCondition: false
+                                alternativeVisibleCondition: closeBtnArea.containsMouse
+                                text: "Fechar janela"
                             }
                         }
                     }
