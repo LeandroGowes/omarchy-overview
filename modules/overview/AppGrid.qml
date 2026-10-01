@@ -13,8 +13,31 @@ Item {
     id: root
     required property var panelWindow
     property var shell: null
+    property var overviewScope: null
 
     readonly property var runningWindows: HyprlandData.windowList || []
+
+    readonly property var favoriteApps: {
+        const fromConfig = Config.options.overview.favoriteApps;
+        if (Array.isArray(fromConfig)) return fromConfig;
+        return [
+            "com.microsoft.vscode", "google-chrome", "microsoft-edge",
+            "com.mitchellh.ghostty", "foot", "org.gnome.nautilus",
+            "chatgpt", "steam", "localsend", "mpv"
+        ];
+    }
+
+    function isFavoriteApp(app) {
+        if (!app) return false;
+        const targetId = normalizeId(app.id);
+        return root.favoriteApps.some(f => normalizeId(f) === targetId);
+    }
+
+    function toggleFavorite(appId) {
+        if (overviewScope && typeof overviewScope.toggleFavorite === "function") {
+            overviewScope.toggleFavorite(appId);
+        }
+    }
 
     function normalizeId(id) {
         return String(id || "").toLowerCase().replace(/\.desktop$/, "").trim();
@@ -78,11 +101,7 @@ Item {
         }
 
         // Pinned / favorite apps from config
-        const configuredPinned = (Config.options.overview.favoriteApps || [
-            "com.microsoft.vscode", "google-chrome", "microsoft-edge",
-            "com.mitchellh.ghostty", "foot", "org.gnome.nautilus",
-            "chatgpt", "steam", "localsend", "mpv"
-        ]);
+        const configuredPinned = root.favoriteApps;
         const pinned = configuredPinned.map(normalizeId);
 
         filtered.sort((a, b) => {
@@ -219,6 +238,7 @@ Item {
                         required property int index
                         readonly property var app: modelData
                         readonly property bool running: root.isAppRunning(app)
+                        readonly property bool isFavorite: root.isFavoriteApp(app)
                         readonly property bool isSelected: (root.searchQuery.trim().length > 0 && index === 0)
                         property bool hovered: appMouseArea.containsMouse || isSelected
 
@@ -233,6 +253,20 @@ Item {
                             NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
                         }
                         scale: hovered ? 1.08 : 1.0
+
+                        // Star badge indicating favorite / pinned app
+                        Text {
+                            visible: appTile.isFavorite
+                            anchors.top: parent.top
+                            anchors.right: parent.right
+                            anchors.topMargin: 4
+                            anchors.rightMargin: 6
+                            text: "★"
+                            font.pixelSize: 11
+                            color: Color.accent
+                            opacity: appTile.hovered ? 1.0 : 0.75
+                            z: 2
+                        }
 
                         Column {
                             anchors.centerIn: parent
@@ -291,6 +325,11 @@ Item {
                             cursorShape: Qt.PointingHandCursor
                             acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                             onClicked: (mouse) => {
+                                if (mouse.modifiers & Qt.ControlModifier) {
+                                    root.toggleFavorite(appTile.app.id);
+                                    mouse.accepted = true;
+                                    return;
+                                }
                                 const newInstance = (mouse.button === Qt.RightButton || mouse.button === Qt.MiddleButton);
                                 root.launchApp(appTile.app, newInstance);
                             }
@@ -298,7 +337,16 @@ Item {
                             StyledToolTip {
                                 extraVisibleCondition: false
                                 alternativeVisibleCondition: appMouseArea.containsMouse
-                                text: `${app.name || "App"}\n${app.comment || (appTile.running ? "Em execução (clique para alternar)" : "Clique para abrir")}`
+                                text: {
+                                    const favHint = appTile.isFavorite
+                                        ? "★ Favorito fixado (Ctrl + Clique para desafixar)"
+                                        : "Ctrl + Clique para fixar nos favoritos";
+                                    const runHint = appTile.running
+                                        ? "Em execução (clique para alternar)"
+                                        : "Clique para abrir";
+                                    const desc = app.comment ? `${app.comment}\n` : "";
+                                    return `${app.name || "App"}\n${desc}${runHint}\n${favHint}`;
+                                }
                             }
                         }
                     }

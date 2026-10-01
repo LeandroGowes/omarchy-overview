@@ -23,6 +23,7 @@ Scope {
         id: userConfigFile
         path: (Quickshell.env("HOME") || "/home/leandro") + "/.config/omarchy/shell.json"
         watchChanges: true
+        atomicWrites: true
         printErrors: false
         onLoaded: overviewScope.syncSettings()
         onFileChanged: reload()
@@ -68,6 +69,59 @@ Scope {
         const next = entrySettings() || ({});
         settings = next;
         Config.settings = next;
+        if (Array.isArray(next.favoriteApps)) {
+            Config.options.overview.favoriteApps = next.favoriteApps;
+        }
+    }
+
+    function toggleFavorite(appId) {
+        if (!appId) return;
+        const cleanId = String(appId).replace(/\.desktop$/, "").trim();
+        const normTarget = cleanId.toLowerCase();
+        let parsed = null;
+        try {
+            const raw = userConfigFile.text();
+            if (raw && raw.trim().length > 0) {
+                parsed = JSON.parse(raw);
+            }
+        } catch (e) {
+            console.warn("omarchy-overview: failed to parse shell.json", e);
+        }
+        if (!parsed || typeof parsed !== "object") return;
+        if (!Array.isArray(parsed.plugins)) parsed.plugins = [];
+
+        let targetPlugin = null;
+        for (let p of parsed.plugins) {
+            if (p && p.id === "omarchy-overview") {
+                targetPlugin = p;
+                break;
+            }
+        }
+        if (!targetPlugin) {
+            targetPlugin = { id: "omarchy-overview" };
+            parsed.plugins.push(targetPlugin);
+        }
+
+        let currentFavorites = Array.isArray(targetPlugin.favoriteApps) ? [...targetPlugin.favoriteApps] : [
+            "com.microsoft.vscode", "google-chrome", "microsoft-edge",
+            "com.mitchellh.ghostty", "foot", "org.gnome.nautilus",
+            "chatgpt", "steam", "localsend", "mpv"
+        ];
+
+        const idx = currentFavorites.findIndex(f => String(f).toLowerCase().replace(/\.desktop$/, "").trim() === normTarget);
+        if (idx >= 0) {
+            currentFavorites.splice(idx, 1);
+        } else {
+            currentFavorites.push(cleanId);
+        }
+
+        targetPlugin.favoriteApps = currentFavorites;
+
+        userConfigFile.setText(JSON.stringify(parsed, null, 2) + "\n");
+
+        settings = Object.assign({}, targetPlugin);
+        Config.settings = Object.assign({}, targetPlugin);
+        Config.options.overview.favoriteApps = currentFavorites;
     }
 
     onManifestChanged: syncSettings()
@@ -484,7 +538,8 @@ Scope {
                 AppGrid {
                     id: appGrid
                     panelWindow: root
-                    shell: overviewScope.shell
+                    shell: root.shell
+                    overviewScope: overviewScope
                     searchQuery: searchInput.text
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: (overviewLoader.item && overviewLoader.item.implicitWidth > 0) ? overviewLoader.item.implicitWidth : implicitWidth
@@ -513,6 +568,10 @@ Scope {
             return GlobalStates.overviewOpen ? "open" : "closed";
         }
         function ping(): string {
+            return "ok";
+        }
+        function toggleFavorite(appId: string): string {
+            overviewScope.toggleFavorite(appId);
             return "ok";
         }
     }
