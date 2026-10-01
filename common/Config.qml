@@ -24,6 +24,8 @@ Singleton {
             return "specialWorkspaceColumns";
         if (path === "overview.favoriteApps")
             return "favoriteApps";
+        if (path === "overview.showMediaWidget")
+            return "showMediaWidget";
         if (path === "windowPreview.showIcons")
             return "showIcons";
         return "";
@@ -166,6 +168,7 @@ Singleton {
             property bool includeInactiveMonitorPreviews: root.readBool("overview.includeInactiveMonitorPreviews", true)
             property int previewRecaptureDelayMs: root.readInt("overview.previewRecaptureDelayMs", 60)
             property bool showSpecialWorkspaces: root.asBool(root.setting("showSpecialWorkspaces", false), false)
+            property bool showMediaWidget: root.asBool(root.setting("showMediaWidget", true), true)
             property var favoriteApps: root.readList("overview.favoriteApps", [
                 "com.microsoft.vscode", "google-chrome", "microsoft-edge",
                 "com.mitchellh.ghostty", "foot", "org.gnome.nautilus",

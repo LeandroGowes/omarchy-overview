@@ -376,152 +376,176 @@ Scope {
                     topMargin: Config.options.position.topMargin
                 }
 
-                // Search Bar ("Type-to-Search")
-                Rectangle {
-                    id: searchBarContainer
+                // Top Header (Search Bar & Now Playing Media Widget)
+                RowLayout {
+                    id: topHeader
                     Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredWidth: Math.min(480, (overviewLoader.item ? overviewLoader.item.implicitWidth : 1310) * 0.45)
+                    Layout.preferredWidth: (overviewLoader.item && overviewLoader.item.implicitWidth > 0) ? overviewLoader.item.implicitWidth : 1310
                     Layout.preferredHeight: 38
-                    radius: Style.cornerRadius
-                    color: Color.launcher.background
-                    border.width: searchInput.activeFocus ? Math.max(1, Style.space(1.5)) : Math.max(1, Style.space(1))
-                    border.color: searchInput.activeFocus ? Color.launcher.selectedText : Color.launcher.border
+                    spacing: 14
 
-                    RowLayout {
-                        anchors.fill: parent
-                        anchors.leftMargin: 12
-                        anchors.rightMargin: 12
-                        spacing: 8
+                    // Left balancing spacer (keeps the search bar centered when the media widget is visible on wide screens)
+                    Item {
+                        Layout.preferredWidth: mediaWidget.visible ? mediaWidget.implicitWidth : 0
+                        Layout.preferredHeight: 38
+                        visible: mediaWidget.visible && topHeader.width >= 1050
+                    }
 
-                        Text {
-                            text: "\uf002"
-                            font.family: "JetBrainsMono Nerd Font"
-                            font.pixelSize: 13
-                            color: Color.launcher.text
-                            opacity: 0.65
-                            Layout.alignment: Qt.AlignVCenter
-                        }
+                    // Search Bar ("Type-to-Search")
+                    Rectangle {
+                        id: searchBarContainer
+                        Layout.alignment: Qt.AlignHCenter
+                        Layout.preferredWidth: Math.min(480, topHeader.width * 0.42)
+                        Layout.preferredHeight: 38
+                        radius: Style.cornerRadius
+                        color: Color.launcher.background
+                        border.width: searchInput.activeFocus ? Math.max(1, Style.space(1.5)) : Math.max(1, Style.space(1))
+                        border.color: searchInput.activeFocus ? Color.launcher.selectedText : Color.launcher.border
 
-                        TextInput {
-                            id: searchInput
-                            Layout.fillWidth: true
-                            Layout.alignment: Qt.AlignVCenter
-                            color: Color.launcher.text
-                            font.family: Style.font.family
-                            font.pixelSize: 13
-                            clip: true
-                            selectByMouse: true
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            spacing: 8
 
                             Text {
-                                text: "Pesquisar aplicativos e janelas..."
-                                color: Color.launcher.text
-                                opacity: 0.4
-                                font.family: Style.font.family
+                                text: "\uf002"
+                                font.family: "JetBrainsMono Nerd Font"
                                 font.pixelSize: 13
-                                visible: !searchInput.text && !searchInput.inputMethodComposing
-                                anchors.verticalCenter: parent.verticalCenter
+                                color: Color.launcher.text
+                                opacity: 0.65
+                                Layout.alignment: Qt.AlignVCenter
                             }
 
-                            Keys.onPressed: (event) => {
-                                if (event.key === Qt.Key_Escape) {
-                                    if (searchInput.text.length > 0) {
-                                        searchInput.text = "";
-                                        event.accepted = true;
-                                    } else {
-                                        GlobalStates.overviewOpen = false;
-                                        event.accepted = true;
-                                    }
-                                    return;
+                            TextInput {
+                                id: searchInput
+                                Layout.fillWidth: true
+                                Layout.alignment: Qt.AlignVCenter
+                                color: Color.launcher.text
+                                font.family: Style.font.family
+                                font.pixelSize: 13
+                                clip: true
+                                selectByMouse: true
+
+                                Text {
+                                    text: "Pesquisar aplicativos e janelas..."
+                                    color: Color.launcher.text
+                                    opacity: 0.4
+                                    font.family: Style.font.family
+                                    font.pixelSize: 13
+                                    visible: !searchInput.text && !searchInput.inputMethodComposing
+                                    anchors.verticalCenter: parent.verticalCenter
                                 }
 
-                                if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                                    if (searchInput.text.trim().length > 0) {
-                                        appGrid.launchFirstApp(false);
-                                        event.accepted = true;
-                                    } else {
-                                        GlobalStates.overviewOpen = false;
-                                        event.accepted = true;
-                                    }
-                                    return;
-                                }
-
-                                // If search query is empty, let 1-9 switch workspaces
-                                if (searchInput.text.length === 0) {
-                                    const workspacesPerGroup = Config.options.overview.rows * Config.options.overview.columns;
-                                    const currentId = Hyprland.focusedMonitor?.activeWorkspace?.id ?? 1;
-                                    const useWorkspaceMap = Config.options.overview.useWorkspaceMap;
-                                    const workspaceMap = Config.options.overview.workspaceMap ?? [];
-                                    const focusedMonitorId = Hyprland.focusedMonitor?.id ?? root.monitor?.id ?? 0;
-                                    const workspaceOffset = useWorkspaceMap ? Number(workspaceMap[focusedMonitorId] ?? 0) : 0;
-                                    const currentGroup = Math.floor((currentId - workspaceOffset - 1) / workspacesPerGroup);
-                                    const minWorkspaceId = currentGroup * workspacesPerGroup + 1 + workspaceOffset;
-                                    const maxWorkspaceId = minWorkspaceId + workspacesPerGroup - 1;
-
-                                    if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
-                                        const pos = event.key - Qt.Key_0;
-                                        if (pos <= workspacesPerGroup) {
-                                            const target = minWorkspaceId + pos - 1;
-                                            if (Hyprland.usingLua) {
-                                                Hyprland.dispatch(`hl.dsp.focus({workspace = '${target}'})`);
-                                            } else {
-                                                Hyprland.dispatch("workspace " + target);
-                                            }
+                                Keys.onPressed: (event) => {
+                                    if (event.key === Qt.Key_Escape) {
+                                        if (searchInput.text.length > 0) {
+                                            searchInput.text = "";
                                             event.accepted = true;
-                                            return;
+                                        } else {
+                                            GlobalStates.overviewOpen = false;
+                                            event.accepted = true;
                                         }
-                                    }
-
-                                    const rows = Config.options.overview.rows;
-                                    const columns = Config.options.overview.columns;
-                                    const reverseColumns = Config.options.overview.orderRightLeft;
-                                    const reverseRows = Config.options.overview.orderBottomUp;
-
-                                    const clampedIndex = Math.max(0, Math.min(workspacesPerGroup - 1, currentId - minWorkspaceId));
-                                    const currentNormalRow = Math.floor(clampedIndex / columns);
-                                    const currentNormalColumn = clampedIndex % columns;
-
-                                    let targetVisualRow = reverseRows ? (rows - currentNormalRow - 1) : currentNormalRow;
-                                    let targetVisualColumn = reverseColumns ? (columns - currentNormalColumn - 1) : currentNormalColumn;
-
-                                    if (event.key === Qt.Key_Left) {
-                                        targetVisualColumn = (targetVisualColumn - 1 + columns) % columns;
-                                    } else if (event.key === Qt.Key_Right) {
-                                        targetVisualColumn = (targetVisualColumn + 1) % columns;
-                                    } else if (event.key === Qt.Key_Up) {
-                                        targetVisualRow = (targetVisualRow - 1 + rows) % rows;
-                                    } else if (event.key === Qt.Key_Down) {
-                                        targetVisualRow = (targetVisualRow + 1) % rows;
-                                    } else {
                                         return;
                                     }
 
-                                    const targetNormalRow = reverseRows ? (rows - targetVisualRow - 1) : targetVisualRow;
-                                    const targetNormalColumn = reverseColumns ? (columns - targetVisualColumn - 1) : targetVisualColumn;
-                                    const targetId = minWorkspaceId + targetNormalRow * columns + targetNormalColumn;
-                                    const clampedTarget = Math.max(minWorkspaceId, Math.min(maxWorkspaceId, targetId));
-                                    if (Hyprland.usingLua) {
-                                        Hyprland.dispatch(`hl.dsp.focus({workspace = '${clampedTarget}'})`);
-                                    } else {
-                                        Hyprland.dispatch("workspace " + clampedTarget);
+                                    if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                        if (searchInput.text.trim().length > 0) {
+                                            appGrid.launchFirstApp(false);
+                                            event.accepted = true;
+                                        } else {
+                                            GlobalStates.overviewOpen = false;
+                                            event.accepted = true;
+                                        }
+                                        return;
                                     }
-                                    event.accepted = true;
-                                    return;
+
+                                    // If search query is empty, let 1-9 switch workspaces
+                                    if (searchInput.text.length === 0) {
+                                        const workspacesPerGroup = Config.options.overview.rows * Config.options.overview.columns;
+                                        const currentId = Hyprland.focusedMonitor?.activeWorkspace?.id ?? 1;
+                                        const useWorkspaceMap = Config.options.overview.useWorkspaceMap;
+                                        const workspaceMap = Config.options.overview.workspaceMap ?? [];
+                                        const focusedMonitorId = Hyprland.focusedMonitor?.id ?? root.monitor?.id ?? 0;
+                                        const workspaceOffset = useWorkspaceMap ? Number(workspaceMap[focusedMonitorId] ?? 0) : 0;
+                                        const currentGroup = Math.floor((currentId - workspaceOffset - 1) / workspacesPerGroup);
+                                        const minWorkspaceId = currentGroup * workspacesPerGroup + 1 + workspaceOffset;
+                                        const maxWorkspaceId = minWorkspaceId + workspacesPerGroup - 1;
+
+                                        if (event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+                                            const pos = event.key - Qt.Key_0;
+                                            if (pos <= workspacesPerGroup) {
+                                                const target = minWorkspaceId + pos - 1;
+                                                if (Hyprland.usingLua) {
+                                                    Hyprland.dispatch(`hl.dsp.focus({workspace = '${target}'})`);
+                                                } else {
+                                                    Hyprland.dispatch("workspace " + target);
+                                                }
+                                                event.accepted = true;
+                                                return;
+                                            }
+                                        }
+
+                                        const rows = Config.options.overview.rows;
+                                        const columns = Config.options.overview.columns;
+                                        const reverseColumns = Config.options.overview.orderRightLeft;
+                                        const reverseRows = Config.options.overview.orderBottomUp;
+
+                                        const clampedIndex = Math.max(0, Math.min(workspacesPerGroup - 1, currentId - minWorkspaceId));
+                                        const currentNormalRow = Math.floor(clampedIndex / columns);
+                                        const currentNormalColumn = clampedIndex % columns;
+
+                                        let targetVisualRow = reverseRows ? (rows - currentNormalRow - 1) : currentNormalRow;
+                                        let targetVisualColumn = reverseColumns ? (columns - currentNormalColumn - 1) : currentNormalColumn;
+
+                                        if (event.key === Qt.Key_Left) {
+                                            targetVisualColumn = (targetVisualColumn - 1 + columns) % columns;
+                                        } else if (event.key === Qt.Key_Right) {
+                                            targetVisualColumn = (targetVisualColumn + 1) % columns;
+                                        } else if (event.key === Qt.Key_Up) {
+                                            targetVisualRow = (targetVisualRow - 1 + rows) % rows;
+                                        } else if (event.key === Qt.Key_Down) {
+                                            targetVisualRow = (targetVisualRow + 1) % rows;
+                                        } else {
+                                            return;
+                                        }
+
+                                        const targetNormalRow = reverseRows ? (rows - targetVisualRow - 1) : targetVisualRow;
+                                        const targetNormalColumn = reverseColumns ? (columns - targetVisualColumn - 1) : targetVisualColumn;
+                                        const targetId = minWorkspaceId + targetNormalRow * columns + targetNormalColumn;
+                                        const clampedTarget = Math.max(minWorkspaceId, Math.min(maxWorkspaceId, targetId));
+                                        if (Hyprland.usingLua) {
+                                            Hyprland.dispatch(`hl.dsp.focus({workspace = '${clampedTarget}'})`);
+                                        } else {
+                                            Hyprland.dispatch("workspace " + clampedTarget);
+                                        }
+                                        event.accepted = true;
+                                        return;
+                                    }
+                                }
+                            }
+
+                            Text {
+                                visible: searchInput.text.length > 0
+                                text: "✕"
+                                font.pixelSize: 12
+                                color: Color.launcher.text
+                                opacity: 0.6
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: searchInput.text = ""
                                 }
                             }
                         }
+                    }
 
-                        Text {
-                            visible: searchInput.text.length > 0
-                            text: "✕"
-                            font.pixelSize: 12
-                            color: Color.launcher.text
-                            opacity: 0.6
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: searchInput.text = ""
-                            }
-                        }
+                    // Media Widget ("Now Playing")
+                    MediaWidget {
+                        id: mediaWidget
+                        shell: overviewScope.shell
+                        Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                        visible: (Config.options.overview.showMediaWidget ?? true) && hasMedia && (topHeader.width >= 680)
                     }
                 }
 
