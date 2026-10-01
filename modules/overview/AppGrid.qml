@@ -1,0 +1,303 @@
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls
+import Quickshell
+import Quickshell.Wayland
+import Quickshell.Hyprland
+import "../../common"
+import "../../common/functions"
+import "../../common/widgets"
+import "../../services"
+
+Item {
+    id: root
+    required property var panelWindow
+    property var shell: null
+
+    readonly property var runningWindows: HyprlandData.windowList || []
+
+    function normalizeId(id) {
+        return String(id || "").toLowerCase().replace(/\.desktop$/, "").trim();
+    }
+
+    function isWindowMatchingApp(win, app) {
+        if (!win || !app) return false;
+        const appId = normalizeId(app.id);
+        const winClass = String(win.class || "").toLowerCase();
+        const winInitialClass = String(win.initialClass || "").toLowerCase();
+
+        if (winClass === appId || winInitialClass === appId) return true;
+        if (winClass.indexOf(appId) >= 0 || appId.indexOf(winClass) >= 0) return true;
+
+        const appName = String(app.name || "").toLowerCase();
+        if (appName.length > 2 && (winClass.indexOf(appName) >= 0 || winInitialClass.indexOf(appName) >= 0)) return true;
+
+        const appIcon = String(app.icon || "").toLowerCase();
+        if (appIcon.length > 2 && (winClass.indexOf(appIcon) >= 0 || winInitialClass.indexOf(appIcon) >= 0)) return true;
+
+        return false;
+    }
+
+    function findRunningWindow(app) {
+        for (let i = 0; i < runningWindows.length; i++) {
+            if (isWindowMatchingApp(runningWindows[i], app)) {
+                return runningWindows[i];
+            }
+        }
+        return null;
+    }
+
+    function isAppRunning(app) {
+        return findRunningWindow(app) !== null;
+    }
+
+    readonly property var appEntries: {
+        const raw = DesktopEntries.applications.values || [];
+        const filtered = [];
+        const seen = new Set();
+        const ignored = new Set([
+            "avahi-discover", "bssh", "bvnc", "lstopo", "qv4l2", "qvidcap",
+            "uuctl", "fcitx5-configtool", "system-config-printer", "cups",
+            "jconsole-java17-openjdk", "jshell-java17-openjdk", "limine-snapper-restore",
+            "gcr-prompter", "gcr-viewer", "user-dirs-update-gtk", "fcitx5-wayland-launcher",
+            "gnome-disk-image-mounter", "gnome-disk-image-writer", "nautilus-autorun-software",
+            "org.freedesktop.xwayland", "org.quickshell", "voxtype-configure", "peazip-add-to-archive", "peazip-extract"
+        ]);
+
+        for (let i = 0; i < raw.length; i++) {
+            const app = raw[i];
+            if (!app || app.noDisplay === true || app.hidden === true) continue;
+            const id = normalizeId(app.id);
+            if (ignored.has(id)) continue;
+            if (!app.name || !app.icon) continue;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            filtered.push(app);
+        }
+
+        // Pinned / favorite apps at the front
+        const pinned = [
+            "google-chrome", "com.microsoft.vscode", "microsoft-edge",
+            "org.gnome.nautilus", "com.mitchellh.ghostty", "foot",
+            "steam", "localsend", "chatgpt", "mpv", "flux",
+            "io.github.tcballard.taskmanager", "net.lutris.lutris"
+        ];
+
+        filtered.sort((a, b) => {
+            const idA = normalizeId(a.id);
+            const idB = normalizeId(b.id);
+            const pinA = pinned.indexOf(idA);
+            const pinB = pinned.indexOf(idB);
+            if (pinA !== -1 && pinB !== -1) return pinA - pinB;
+            if (pinA !== -1) return -1;
+            if (pinB !== -1) return 1;
+            return String(a.name || "").localeCompare(String(b.name || ""));
+        });
+
+        return filtered;
+    }
+
+    function resolveIcon(icon) {
+        const value = `${icon ?? ""}`.trim();
+        if (value.length === 0)
+            return Quickshell.iconPath("application-x-executable", true);
+        if (value.startsWith("file://") || value.startsWith("image://") || value.startsWith("qrc:/"))
+            return value;
+        if (value.startsWith("/"))
+            return `file://${value}`;
+        const themed = Quickshell.iconPath(value, true);
+        if (themed.length > 0)
+            return themed;
+        return Quickshell.iconPath("application-x-executable", true);
+    }
+
+    function launchApp(app, newInstance) {
+        GlobalStates.overviewOpen = false;
+        const desktopId = String(app.id || "");
+        const runningWin = findRunningWindow(app);
+
+        if (!newInstance && runningWin && runningWin.address) {
+            if (Hyprland.usingLua) {
+                Hyprland.dispatch(`hl.dsp.focus({ window = 'address:${runningWin.address}' })`);
+            } else {
+                Hyprland.dispatch(`focuswindow address:${runningWin.address}`);
+            }
+            return;
+        }
+
+        const launchCmd = `uwsm-app -- gtk-launch ${desktopId}`;
+        if (Hyprland.usingLua) {
+            Hyprland.dispatch(`hl.dsp.exec_cmd("${launchCmd}")`);
+        } else {
+            Hyprland.dispatch(`exec ${launchCmd}`);
+        }
+    }
+
+    implicitWidth: Math.min((panelWindow?.screen?.width ?? 1536) - 120, 1310) + Appearance.sizes.elevationMargin * 2
+    implicitHeight: 96 + Appearance.sizes.elevationMargin * 2
+
+    StyledRectangularShadow {
+        target: dockBackground
+    }
+
+    Rectangle {
+        id: dockBackground
+        anchors.fill: parent
+        anchors.margins: Appearance.sizes.elevationMargin
+        radius: Style.cornerRadius
+        color: Color.launcher.background
+        border.width: Math.max(1, Style.space(2))
+        border.color: Color.launcher.border
+        clip: true
+
+        Flickable {
+            id: flickable
+            anchors.fill: parent
+            anchors.margins: Style.space(6)
+            contentWidth: Math.max(width, appRow.implicitWidth)
+            contentHeight: height
+            flickableDirection: Flickable.HorizontalFlick
+            boundsBehavior: Flickable.StopAtBounds
+            clip: true
+
+            WheelHandler {
+                target: null
+                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                onWheel: event => {
+                    const delta = event.angleDelta.y || event.angleDelta.x;
+                    if (!delta) return;
+                    flickable.contentX = Math.max(0, Math.min(flickable.contentWidth - flickable.width, flickable.contentX - delta * 0.8));
+                    event.accepted = true;
+                }
+            }
+
+            Row {
+                id: appRow
+                spacing: Style.space(6)
+                anchors.verticalCenter: parent.verticalCenter
+                leftPadding: Style.space(8)
+                rightPadding: Style.space(8)
+                x: Math.max(0, (flickable.width - implicitWidth) / 2)
+
+                Repeater {
+                    model: root.appEntries
+                    delegate: Rectangle {
+                        id: appTile
+                        required property var modelData
+                        readonly property var app: modelData
+                        readonly property bool running: root.isAppRunning(app)
+                        property bool hovered: appMouseArea.containsMouse
+
+                        width: 76
+                        height: 80
+                        radius: 12
+                        color: hovered ? Color.launcher.selectedBackground : "transparent"
+
+                        Behavior on scale {
+                            NumberAnimation { duration: 150; easing.type: Easing.OutQuad }
+                        }
+                        scale: hovered ? 1.08 : 1.0
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: Style.space(3)
+                            width: parent.width
+
+                            Item {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 40
+                                height: 40
+
+                                Image {
+                                    id: appIconImg
+                                    anchors.fill: parent
+                                    fillMode: Image.PreserveAspectFit
+                                    asynchronous: true
+                                    source: root.resolveIcon(app.icon)
+                                    sourceSize.width: 40 * Screen.devicePixelRatio
+                                    sourceSize.height: 40 * Screen.devicePixelRatio
+                                }
+                            }
+
+                            // Running indicator dot
+                            Item {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 6
+                                height: 5
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    visible: appTile.running
+                                    width: 5
+                                    height: 5
+                                    radius: 2.5
+                                    color: Color.launcher.selectedText
+                                }
+                            }
+
+                            StyledText {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: parent.width - 8
+                                text: app.name || ""
+                                font.family: Style.font.family
+                                font.pixelSize: 11
+                                color: appTile.hovered ? Color.launcher.selectedText : Color.launcher.text
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                                maximumLineCount: 1
+                            }
+                        }
+
+                        MouseArea {
+                            id: appMouseArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                            onClicked: (mouse) => {
+                                const newInstance = (mouse.button === Qt.RightButton || mouse.button === Qt.MiddleButton);
+                                root.launchApp(appTile.app, newInstance);
+                            }
+
+                            StyledToolTip {
+                                extraVisibleCondition: false
+                                alternativeVisibleCondition: appMouseArea.containsMouse
+                                text: `${app.name || "App"}\n${app.comment || (appTile.running ? "Em execução (clique para alternar)" : "Clique para abrir")}`
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Left gradient fade when scrolled
+        Rectangle {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 28
+            visible: flickable.contentX > 4
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: Color.launcher.background }
+                GradientStop { position: 1.0; color: "transparent" }
+            }
+            z: 2
+        }
+
+        // Right gradient fade when more content available
+        Rectangle {
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 28
+            visible: flickable.contentWidth > flickable.width && flickable.contentX < (flickable.contentWidth - flickable.width - 4)
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0.0; color: "transparent" }
+                GradientStop { position: 1.0; color: Color.launcher.background }
+            }
+            z: 2
+        }
+    }
+}

@@ -18,6 +18,15 @@ Scope {
     property var settings: ({})
     property bool opened: GlobalStates.overviewOpen
 
+    FileView {
+        id: userConfigFile
+        path: (Quickshell.env("HOME") || "/home/leandro") + "/.config/omarchy/shell.json"
+        watchChanges: true
+        printErrors: false
+        onLoaded: overviewScope.syncSettings()
+        onFileChanged: reload()
+    }
+
     // Read a single value from this plugin's inline shell.json entry, with a
     // fallback for missing/null values. Matches Omarchy Panel.setting().
     function setting(name, fallback) {
@@ -27,10 +36,25 @@ Scope {
 
     function entrySettings() {
         const id = String(manifest?.id || "omarchy-overview");
-        const config = shell?.shellConfig || null;
-        const plugins = config?.plugins || [];
-        if (!Array.isArray(plugins))
-            return settings || ({});
+        let plugins = [];
+        try {
+            const raw = userConfigFile.text();
+            if (raw && raw.trim().length > 0) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed?.plugins)) {
+                    plugins = parsed.plugins;
+                }
+            }
+        } catch (e) {
+            console.warn("omarchy-overview: failed to parse shell.json", e);
+        }
+
+        if (plugins.length === 0) {
+            const config = shell?.shellConfig || null;
+            if (Array.isArray(config?.plugins)) {
+                plugins = config.plugins;
+            }
+        }
 
         for (const entry of plugins) {
             if (String(entry?.id || "") === id)
@@ -276,6 +300,7 @@ Scope {
                 id: columnLayout
                 visible: GlobalStates.overviewOpen
                 z: 1
+                spacing: Style.space(14)
                 anchors {
                     horizontalCenter: parent.horizontalCenter
                     top: parent.top
@@ -290,6 +315,15 @@ Scope {
                         shell: overviewScope.shell
                         visible: true
                     }
+                }
+
+                AppGrid {
+                    id: appGrid
+                    panelWindow: root
+                    shell: overviewScope.shell
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: (overviewLoader.item && overviewLoader.item.implicitWidth > 0) ? overviewLoader.item.implicitWidth : implicitWidth
+                    Layout.preferredHeight: implicitHeight
                 }
             }
         }

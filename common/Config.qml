@@ -10,6 +10,8 @@ Singleton {
     property var settings: ({})
 
     function flatKeyFor(path) {
+        if (path === "overview.scale")
+            return "scale";
         if (path === "overview.rows")
             return "rows";
         if (path === "overview.columns")
@@ -180,7 +182,7 @@ Singleton {
         }
 
         property QtObject position: QtObject {
-            property int topMargin: root.readInt("position.topMargin", 100)
+            property int topMargin: root.readInt("position.topMargin", 35)
         }
 
         property QtObject windowPreview: QtObject {

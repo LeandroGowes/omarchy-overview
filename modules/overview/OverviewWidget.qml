@@ -777,9 +777,10 @@ Item {
                                                 hoverEnabled: true
                                                 onEntered: hovered = true
                                                 onExited: hovered = false
-                                                acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                                acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                                                 drag.target: parent
                                                 onPressed: (mouse) => {
+                                                    if (mouse.button !== Qt.LeftButton) return
                                                     root.draggingFromWorkspace = -1
                                                     root.draggingTargetSpecialWorkspace = ""
                                                     specialWindow.pressed = true
@@ -790,7 +791,8 @@ Item {
                                                     specialWindow.moveToDragLayer()
                                                     specialWindow.Drag.active = true
                                                 }
-                                                onReleased: {
+                                                onReleased: (mouse) => {
+                                                    if (mouse.button !== Qt.LeftButton && !specialWindow.Drag.active) return
                                                     const targetWorkspace = root.draggingTargetWorkspace
                                                     const targetSpecialWorkspace = root.draggingTargetSpecialWorkspace
                                                     specialWindow.pressed = false
@@ -848,6 +850,22 @@ Item {
                                                             Hyprland.dispatch(`hl.dsp.focus({ window = 'address:${windowData.address}' })`);
                                                         } else {
                                                             Hyprland.dispatch(`focuswindow address:${windowData.address}`);
+                                                        }
+                                                        event.accepted = true;
+                                                    } else if (event.button === Qt.RightButton) {
+                                                        GlobalStates.overviewOpen = false;
+                                                        if (Hyprland.usingLua) {
+                                                            Hyprland.dispatch(`hl.dsp.focus({ window = 'address:${windowData.address}' })`);
+                                                            const isMaximized = (windowData?.fullscreen ?? 0) === 1;
+                                                            if (!isMaximized) {
+                                                                Hyprland.dispatch(`hl.dsp.window.fullscreen({ mode = 'maximized' })`);
+                                                            }
+                                                        } else {
+                                                            Hyprland.dispatch(`focuswindow address:${windowData.address}`);
+                                                            const isMaximized = (windowData?.fullscreen ?? 0) === 1;
+                                                            if (!isMaximized) {
+                                                                Hyprland.dispatch(`fullscreen 1`);
+                                                            }
                                                         }
                                                         event.accepted = true;
                                                     } else if (event.button === Qt.MiddleButton) {
@@ -1012,6 +1030,13 @@ Item {
                             const winA = windowByAddress[addrA]
                             const winB = windowByAddress[addrB]
 
+                            // Fullscreen windows go behind non-fullscreen windows so other windows in the workspace remain visible and clickable
+                            const isFsA = (winA?.fullscreen ?? 0) > 0 ? 1 : 0
+                            const isFsB = (winB?.fullscreen ?? 0) > 0 ? 1 : 0
+                            if (isFsA !== isFsB) {
+                                return isFsA ? -1 : 1
+                            }
+
                             // 1. Pinned windows are always on top
                             if (winA?.pinned !== winB?.pinned) {
                                 return winA?.pinned ? 1 : -1
@@ -1073,9 +1098,10 @@ Item {
                         hoverEnabled: true
                         onEntered: hovered = true
                         onExited: hovered = false
-                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
                         drag.target: parent
                         onPressed: (mouse) => {
+                            if (mouse.button !== Qt.LeftButton) return
                             root.draggingFromWorkspace = windowData?.workspace.id
                             root.draggingTargetSpecialWorkspace = ""
                             window.pressed = true
@@ -1084,7 +1110,8 @@ Item {
                             window.Drag.hotSpot.x = mouse.x
                             window.Drag.hotSpot.y = mouse.y
                         }
-                        onReleased: {
+                        onReleased: (mouse) => {
+                            if (mouse.button !== Qt.LeftButton && !window.Drag.active) return
                             const targetWorkspace = root.draggingTargetWorkspace
                             const targetSpecialWorkspace = root.draggingTargetSpecialWorkspace
                             window.pressed = false
@@ -1134,6 +1161,22 @@ Item {
                                     Hyprland.dispatch(`hl.dsp.focus({ window = 'address:${windowData.address}' })`);
                                 } else {
                                     Hyprland.dispatch(`focuswindow address:${windowData.address}`)
+                                }
+                                event.accepted = true
+                            } else if (event.button === Qt.RightButton) {
+                                GlobalStates.overviewOpen = false
+                                if (Hyprland.usingLua) {
+                                    Hyprland.dispatch(`hl.dsp.focus({ window = 'address:${windowData.address}' })`);
+                                    const isMaximized = (windowData?.fullscreen ?? 0) === 1;
+                                    if (!isMaximized) {
+                                        Hyprland.dispatch(`hl.dsp.window.fullscreen({ mode = 'maximized' })`);
+                                    }
+                                } else {
+                                    Hyprland.dispatch(`focuswindow address:${windowData.address}`);
+                                    const isMaximized = (windowData?.fullscreen ?? 0) === 1;
+                                    if (!isMaximized) {
+                                        Hyprland.dispatch(`fullscreen 1`);
+                                    }
                                 }
                                 event.accepted = true
                             } else if (event.button === Qt.MiddleButton) {

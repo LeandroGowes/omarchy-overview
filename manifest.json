@@ -15,11 +15,12 @@
   "settings": {
     "defaults": {
       "rows": 2,
-      "columns": 5,
+      "columns": 4,
+      "scale": 0.22,
       "hideEmptyRows": true,
       "showSpecialWorkspaces": false,
-      "specialWorkspaceColumns": 5,
-      "showIcons": false
+      "specialWorkspaceColumns": 4,
+      "showIcons": true
     },
     "schema": [
       {
